@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import userAPI from "../API/userAPI";
 import authAPI from "../API/authAPI";
 import conservationAPI from "../API/conservationAPI";
+import messageAPI from "../API/messageAPI";
 import type { Conversation, Message } from "../types/chat";
 import ChatSidebar from "../COMPONENTS/chat/ChatSidebar";
 import ChatWindow from "../COMPONENTS/chat/ChatWindow";
@@ -138,6 +139,8 @@ const buildSearchConversation = (item: any, index: number): Conversation => {
 
   return {
     id: item.id ?? `${isGroup ? "group" : "user"}-${index}`,
+    conversationId: isGroup ? item.id : undefined,
+    targetUserId: isGroup ? undefined : item.id,
     name,
     initials: avatarUrl ? getInitials(name) : getInitials(name),
     color: colorPalette[index % colorPalette.length],
@@ -159,6 +162,7 @@ export default function ChatHomePage() {
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string>("");
   const [currentUserInitials, setCurrentUserInitials] = useState<string>("U");
   const [searchResults, setSearchResults] = useState<Conversation[]>([]);
+  const searchRequestId = useRef(0);
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -178,56 +182,77 @@ export default function ChatHomePage() {
     fetchCurrentUser();
   }, []);
 
-  useEffect(() => {
-    const trimmedQuery = query.trim();
+  const handleSearch = async (value: string) => {
+    setQuery(value);
+    const trimmedQuery = value.trim();
+    const requestId = ++searchRequestId.current;
 
     if (!trimmedQuery) {
       setSearchResults([]);
       return;
     }
 
-    let cancelled = false;
+    try {
+      const [usersResponse, conversationsResponse] = await Promise.all([
+        userAPI.searchUsers(trimmedQuery, 10).catch(() => []),
+        conservationAPI.searchConversations(trimmedQuery, 10).catch(() => []),
+      ]);
 
-    const fetchSearchResults = async () => {
-      try {
-        const [usersResponse, conversationsResponse] = await Promise.all([
-          userAPI.searchUsers(trimmedQuery, 10).catch(() => []),
-          conservationAPI.searchConversations(trimmedQuery, 10).catch(() => []),
-        ]);
+      if (requestId !== searchRequestId.current) return;
 
-        if (cancelled) return;
+      const merged = [
+        ...(Array.isArray(usersResponse) ? usersResponse : []).map((user, index) =>
+          buildSearchConversation({ ...user, is_group: false }, index)
+        ),
+        ...(Array.isArray(conversationsResponse) ? conversationsResponse : []).map((conversation, index) =>
+          buildSearchConversation(conversation, index + 20)
+        ),
+      ];
 
-        const merged = [
-          ...(Array.isArray(usersResponse) ? usersResponse : []).map((user, index) =>
-            buildSearchConversation({ ...user, is_group: false }, index)
-          ),
-          ...(Array.isArray(conversationsResponse) ? conversationsResponse : []).map((conversation, index) =>
-            buildSearchConversation(conversation, index + 20)
-          ),
-        ];
-
-        setSearchResults(merged.slice(0, 20));
-      } catch (error) {
-        console.error("Search failed:", error);
-        if (!cancelled) {
-          setSearchResults([]);
-        }
+      setSearchResults(merged.slice(0, 20));
+    } catch (error) {
+      console.error("Search failed:", error);
+      if (requestId === searchRequestId.current) {
+        setSearchResults([]);
       }
-    };
-
-    fetchSearchResults();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [query]);
+    }
+  };
 
   const visibleConversations = query.trim() ? searchResults.length > 0 ? searchResults : [] : conversations;
   const active = (visibleConversations.find((c) => c.id === activeId) ?? visibleConversations[0] ?? conversations[0]) as Conversation;
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
+
+    try {
+      const response = active.targetUserId
+        ? await messageAPI.sendMessageToUser(active.targetUserId, text)
+        : active.conversationId
+          ? await messageAPI.sendMessage(active.conversationId, text)
+          : null;
+      if (!response) return;
+
+      if (active.targetUserId && response.conversation_id) {
+        setSearchResults((current) =>
+          current.map((conversation) =>
+            conversation.id === active.id
+              ? {
+                  ...conversation,
+                  id: response.conversation_id,
+                  conversationId: response.conversation_id,
+                  targetUserId: undefined,
+                }
+              : conversation
+          )
+        );
+        setActiveId(response.conversation_id);
+      }
+    } catch (error) {
+      console.error("Could not send message:", error);
+      return;
+    }
+
     const time = new Date().toLocaleTimeString("vi-VN", {
       hour: "2-digit",
       minute: "2-digit",
@@ -237,6 +262,24 @@ export default function ChatHomePage() {
       { id: prev.length + 1, from: "me", text, time, seen: false },
     ]);
     setDraft("");
+  };
+
+  const handleUpload = async (file: File) => {
+    if (!active.conversationId) {
+      console.warn("Send a text message first to create this conversation.");
+      return;
+    }
+
+    try {
+      const uploadRequest = file.type.startsWith("image/")
+        ? messageAPI.uploadImage(active.conversationId, file)
+        : file.type.startsWith("video/")
+          ? messageAPI.uploadVideo(active.conversationId, file)
+          : messageAPI.uploadFile(active.conversationId, file);
+      await uploadRequest;
+    } catch (error) {
+      console.error("Could not upload file:", error);
+    }
   };
 
   const handleLogout = async () => {
@@ -267,6 +310,7 @@ export default function ChatHomePage() {
         onSelect={setActiveId}
         query={query}
         onQueryChange={setQuery}
+        onSearch={handleSearch}
         currentUserName={currentUserName}
         currentUserInitials={currentUserInitials}
         currentUserAvatar={currentUserAvatar}
@@ -279,6 +323,7 @@ export default function ChatHomePage() {
         draft={draft}
         onDraftChange={setDraft}
         onSend={handleSend}
+        onUpload={handleUpload}
       />
     </div>
   );

@@ -5,11 +5,9 @@ from pathlib import Path
 import anyio
 from fastapi import HTTPException, UploadFile, status
 
+from BE.config.settings import ATTACHMENT_DIR, UPLOAD_DIR
 from BE.models.messages import MessageType
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-UPLOAD_DIR = BASE_DIR / "static" / "uploads"
-ATTACHMENT_DIR = BASE_DIR / "uploads" / "attachments"
 MAX_AVATAR_SIZE = 5 * 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024

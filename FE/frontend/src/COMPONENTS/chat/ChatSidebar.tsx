@@ -10,6 +10,7 @@ interface ChatSidebarProps {
   onSelect: (id: number | string) => void;
   query: string;
   onQueryChange: (value: string) => void;
+  onSearch: (value: string) => void;
   currentUserName: string;
   currentUserInitials: string;
   currentUserAvatar?: string | null;
@@ -23,6 +24,7 @@ export default function ChatSidebar({
   onSelect,
   query,
   onQueryChange,
+  onSearch,
   currentUserName,
   currentUserInitials,
   currentUserAvatar,
@@ -36,7 +38,7 @@ export default function ChatSidebar({
   return (
     <aside className="w-[300px] shrink-0 bg-gray-950 text-white flex flex-col">
       <SidebarHeader />
-      <SidebarSearch value={query} onChange={onQueryChange} />
+      <SidebarSearch value={query} onChange={onQueryChange} onSearch={onSearch} />
       <ConversationList conversations={filtered} activeId={activeId} onSelect={onSelect} />
       <SidebarFooter
         name={currentUserName}

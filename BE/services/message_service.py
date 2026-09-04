@@ -8,6 +8,7 @@ from BE.models.conservations import Conversation
 from BE.models.messages import Message, MessageType
 from BE.repositories.conversation_repository import ConversationRepository
 from BE.repositories.message_repository import MessageRepository
+from BE.repositories.user_repository import UserRepository
 from BE.schemas.messages import (
     MessageCreate,
     MessagePageResponse,
@@ -30,6 +31,10 @@ class MessageConversationNotFoundError(Exception):
 
 class MessageAccessError(Exception):
     """Raised when a user is not a member of a conversation."""
+
+
+class MessageTargetNotFoundError(Exception):
+    """Raised when a lazy message targets an unknown or inactive user."""
 
 
 class MessageCursorError(Exception):
@@ -65,11 +70,37 @@ class MessageService:
         conversation_repository: ConversationRepository,
         broadcaster: MessageBroadcaster,
         upload_service: UploadService,
+        user_repository: UserRepository,
     ) -> None:
         self._message_repository = message_repository
         self._conversation_repository = conversation_repository
         self._broadcaster = broadcaster
         self._upload_service = upload_service
+        self._user_repository = user_repository
+
+    async def send_message_to_user(
+        self, sender_id: UUID, payload: MessageCreate, target_user_id: UUID
+    ) -> Message:
+        if sender_id == target_user_id:
+            raise MessageTargetNotFoundError("A message target must be another user.")
+        target = await self._user_repository.get_by_id(target_user_id)
+        if target is None or not target.is_active:
+            raise MessageTargetNotFoundError("Message target was not found.")
+
+        conversation = await self._conversation_repository.get_private_between(
+            sender_id, target_user_id
+        )
+        if conversation is None:
+            conversation = await self._conversation_repository.create_private(
+                sender_id, target_user_id
+            )
+
+        message = await self._message_repository.create(
+            conversation, sender_id, self._normalized_content(payload.content)
+        )
+        await self._message_repository.commit()
+        await self._broadcast("message.created", message)
+        return message
 
     async def send_message(
         self, conversation_id: UUID, sender_id: UUID, payload: MessageCreate
@@ -79,6 +110,7 @@ class MessageService:
         message = await self._message_repository.create(
             conversation, sender_id, content
         )
+        await self._message_repository.commit()
         await self._broadcast("message.created", message)
         return message
 
@@ -97,6 +129,7 @@ class MessageService:
             self._normalized_content(payload.content),
             reply_to_message_id,
         )
+        await self._message_repository.commit()
         await self._broadcast("message.created", message)
         return message
 
@@ -116,6 +149,7 @@ class MessageService:
                 attachment.url,
                 message_type=message_type,
             )
+            await self._message_repository.commit()
         except Exception:
             await self._upload_service.delete_attachment(attachment.url)
             raise

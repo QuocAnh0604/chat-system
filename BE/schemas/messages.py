@@ -10,6 +10,10 @@ class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=10_000)
 
 
+class LazyMessageCreate(MessageCreate):
+    target_user_id: UUID
+
+
 class MessageUpdate(BaseModel):
     content: str = Field(min_length=1, max_length=10_000)
 

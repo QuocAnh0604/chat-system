@@ -15,7 +15,6 @@ from BE.schemas.conservations import (
     GroupCreate,
     GroupMemberAdd,
     GroupRename,
-    PrivateConversationCreate,
 )
 from BE.services.conversation_service import (
     ConversationService,
@@ -25,7 +24,6 @@ from BE.services.conversation_service import (
     GroupMemberNotFoundError,
     GroupOwnerActionError,
     GroupPermissionError,
-    InvalidPrivateConversationError,
     InvalidGroupMembersError,
 )
 from BE.services.upload_service import UploadService
@@ -55,22 +53,6 @@ async def search_conversations(
         )
         for conversation, role in records
     ]
-
-
-@router.post("/private", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
-async def create_private_conversation(
-    payload: PrivateConversationCreate,
-    current_user: CurrentUser,
-    session: DatabaseSession,
-) -> ConversationResponse:
-    """Create or retrieve a two-member private conversation."""
-    try:
-        conversation = await _service(session).create_private(current_user.id, payload.user_id)
-    except InvalidPrivateConversationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    except ConversationUserNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return ConversationResponse.model_validate(conversation)
 
 
 @router.patch("/{conversation_id}/group", response_model=ConversationResponse)

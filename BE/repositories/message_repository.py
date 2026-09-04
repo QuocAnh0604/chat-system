@@ -14,6 +14,9 @@ class MessageRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def commit(self) -> None:
+        await self._session.commit()
+
     async def create(
         self,
         conversation: Conversation,
@@ -33,8 +36,6 @@ class MessageRepository:
         self._session.add(message)
         await self._session.flush()
         conversation.last_message_id = message.id
-        await self._session.commit()
-        await self._session.refresh(message)
         return message
 
     async def get_by_id(self, message_id: UUID) -> Message | None:

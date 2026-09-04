@@ -4,7 +4,7 @@ import MessageBubble from "./MessageBubble";
 
 interface MessageListProps {
   messages: Message[];
-  activeId: number;
+  activeId: number | string;
   senderColor: string;
   senderInitials: string;
 }

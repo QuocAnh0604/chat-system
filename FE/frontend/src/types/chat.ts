@@ -1,5 +1,7 @@
 export interface Conversation {
   id: number | string;
+  conversationId?: string;
+  targetUserId?: string;
   name: string;
   initials: string;
   color: string;

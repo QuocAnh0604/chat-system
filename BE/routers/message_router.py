@@ -10,8 +10,10 @@ from BE.core.dependencies import get_current_user
 from BE.models.users import User
 from BE.repositories.conversation_repository import ConversationRepository
 from BE.repositories.message_repository import MessageRepository
+from BE.repositories.user_repository import UserRepository
 from BE.schemas.messages import (
     MessageCreate,
+    LazyMessageCreate,
     MessagePageResponse,
     MessageResponse,
     MessageUpdate,
@@ -26,6 +28,7 @@ from BE.services.message_service import (
     MessageEditPermissionError,
     MessageDeletePermissionError,
     MessageNotFoundError,
+    MessageTargetNotFoundError,
     MessageService,
 )
 from BE.websocket.manager import connection_manager
@@ -34,6 +37,7 @@ from BE.services.upload_service import UploadService
 router = APIRouter(
     prefix="/conversations/{conversation_id}/messages", tags=["Messages"]
 )
+lazy_router = APIRouter(prefix="/messages", tags=["Messages"])
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 
@@ -44,7 +48,30 @@ def _service(session: AsyncSession) -> MessageService:
         ConversationRepository(session),
         connection_manager,
         UploadService(),
+        UserRepository(session),
     )
+
+
+@lazy_router.post("", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
+async def send_message_to_user(
+    payload: LazyMessageCreate,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> MessageResponse:
+    """Create a private conversation only when its first message is sent."""
+    try:
+        message = await _service(session).send_message_to_user(
+            current_user.id, MessageCreate(content=payload.content), payload.target_user_id
+        )
+    except MessageTargetNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except InvalidMessageContentError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return MessageResponse.model_validate(message)
 
 
 @router.get("", response_model=MessagePageResponse)

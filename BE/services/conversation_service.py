@@ -59,26 +59,6 @@ class ConversationService:
         self._conversation_repository = conversation_repository
         self._user_repository = user_repository
 
-    async def create_private(
-        self, creator_id: UUID, participant_id: UUID
-    ) -> Conversation:
-        if creator_id == participant_id:
-            raise InvalidPrivateConversationError(
-                "A private conversation requires a different user."
-            )
-        participant = await self._user_repository.get_by_id(participant_id)
-        if participant is None or not participant.is_active:
-            raise ConversationUserNotFoundError("Conversation user was not found.")
-
-        existing = await self._conversation_repository.get_private_between(
-            creator_id, participant_id
-        )
-        if existing is not None:
-            return existing
-        return await self._conversation_repository.create_private(
-            creator_id, participant_id
-        )
-
     async def list_for_user(
         self, user_id: UUID
     ) -> list[tuple[Conversation, MemberRole]]:

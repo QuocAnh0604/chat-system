@@ -9,9 +9,10 @@ interface ChatWindowProps {
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: () => void;
+  onUpload: (file: File) => void;
 }
 
-export default function ChatWindow({ conversation, messages, draft, onDraftChange, onSend }: ChatWindowProps) {
+export default function ChatWindow({ conversation, messages, draft, onDraftChange, onSend, onUpload }: ChatWindowProps) {
   return (
     <section className="flex-1 flex flex-col min-w-0">
       <ChatHeader conversation={conversation} />
@@ -21,7 +22,7 @@ export default function ChatWindow({ conversation, messages, draft, onDraftChang
         senderColor={conversation.color}
         senderInitials={conversation.initials}
       />
-      <MessageInput value={draft} onChange={onDraftChange} onSend={onSend} />
+      <MessageInput value={draft} onChange={onDraftChange} onSend={onSend} onUpload={onUpload} />
     </section>
   );
 }

@@ -9,6 +9,12 @@ const messageAPI = {
       },
     }),
 
+  sendMessageToUser: (targetUserId: string, content: string) =>
+    axiosClient.post("/messages", {
+      target_user_id: targetUserId,
+      content,
+    }),
+
   sendMessage: (conversationId: string, content: string) =>
     axiosClient.post(`/conversations/${conversationId}/messages`, {
       content,

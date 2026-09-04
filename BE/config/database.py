@@ -1,16 +1,13 @@
-import os
-from collections.abc import AsyncGenerator
-from pathlib import Path
 import asyncio
+from collections.abc import AsyncGenerator
+
 from sqlalchemy import text
-from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / ".env")
+from BE.config.settings import DATABASE_URL
 
-database_url = os.getenv("DATABASE_URL")
+database_url = DATABASE_URL
 if not database_url:
     raise ValueError("DATABASE_URL must be configured in the environment.")
 

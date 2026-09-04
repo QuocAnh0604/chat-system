@@ -1,11 +1,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from BE.models.conservation_members import ConversationMember, MemberRole
 from BE.models.conservations import Conversation
+from BE.models.messages import Message
 
 
 class ConversationRepository:
@@ -14,22 +16,17 @@ class ConversationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def commit(self) -> None:
+        await self._session.commit()
+
     async def get_private_between(
         self, first_user_id: UUID, second_user_id: UUID
     ) -> Conversation | None:
-        statement = (
-            select(Conversation)
-            .join(
-                ConversationMember,
-                ConversationMember.conversation_id == Conversation.id,
-            )
-            .where(
-                Conversation.is_group.is_(False),
-                ConversationMember.user_id.in_([first_user_id, second_user_id]),
-            )
-            .group_by(Conversation.id)
-            .having(func.count(ConversationMember.user_id) == 2)
-            .having(func.count(func.distinct(ConversationMember.user_id)) == 2)
+        user_id_1, user_id_2 = sorted((first_user_id, second_user_id))
+        statement = select(Conversation).where(
+            Conversation.is_group.is_(False),
+            Conversation.private_user_id_1 == user_id_1,
+            Conversation.private_user_id_2 == user_id_2,
         )
         result = await self._session.execute(statement)
         return result.scalar_one_or_none()
@@ -37,25 +34,58 @@ class ConversationRepository:
     async def create_private(
         self, first_user_id: UUID, second_user_id: UUID
     ) -> Conversation:
-        conversation = Conversation(is_group=False)
-        self._session.add(conversation)
-        await self._session.flush()
-        self._session.add_all(
-            [
-                ConversationMember(
-                    conversation_id=conversation.id,
-                    user_id=first_user_id,
-                    role=MemberRole.member,
-                ),
-                ConversationMember(
-                    conversation_id=conversation.id,
-                    user_id=second_user_id,
-                    role=MemberRole.member,
-                ),
-            ]
+        user_id_1, user_id_2 = sorted((first_user_id, second_user_id))
+        statement = (
+            insert(Conversation)
+            .values(
+                is_group=False,
+                private_user_id_1=user_id_1,
+                private_user_id_2=user_id_2,
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    Conversation.private_user_id_1,
+                    Conversation.private_user_id_2,
+                ],
+                index_where=text("is_group = false"),
+            )
+            .returning(Conversation.id)
         )
-        await self._session.commit()
-        await self._session.refresh(conversation)
+        result = await self._session.execute(statement)
+        conversation_id = result.scalar_one_or_none()
+        if conversation_id is None:
+            conversation = await self.get_private_between(first_user_id, second_user_id)
+            if conversation is None:
+                raise RuntimeError("Private conversation could not be created.")
+        else:
+            conversation = await self.get_by_id(conversation_id)
+            if conversation is None:
+                raise RuntimeError("Private conversation could not be loaded.")
+
+        await self._session.execute(
+            insert(ConversationMember)
+            .values(
+                [
+                    {
+                        "conversation_id": conversation.id,
+                        "user_id": first_user_id,
+                        "role": MemberRole.member,
+                    },
+                    {
+                        "conversation_id": conversation.id,
+                        "user_id": second_user_id,
+                        "role": MemberRole.member,
+                    },
+                ]
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    ConversationMember.conversation_id,
+                    ConversationMember.user_id,
+                ]
+            )
+        )
+        await self._session.flush()
         return conversation
 
     async def list_for_user(
@@ -68,6 +98,11 @@ class ConversationRepository:
                 ConversationMember.conversation_id == Conversation.id,
             )
             .where(ConversationMember.user_id == user_id)
+            .where(
+                exists(
+                    select(Message.id).where(Message.conversation_id == Conversation.id)
+                )
+            )
             .order_by(Conversation.updated_at.desc())
         )
         result = await self._session.execute(statement)
