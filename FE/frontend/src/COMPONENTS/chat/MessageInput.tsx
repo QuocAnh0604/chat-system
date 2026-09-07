@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from "react";
+import { Send } from "lucide-react";
 
 interface MessageInputProps {
   value: string;
@@ -37,6 +38,16 @@ export default function MessageInput({ value, onChange, onSend, onUpload }: Mess
         placeholder="Nhập tin nhắn..."
         className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-200"
       />
+      <button
+        type="button"
+        onClick={onSend}
+        disabled={!value.trim()}
+        aria-label="Gửi tin nhắn"
+        title="Gửi tin nhắn"
+        className="w-10 h-10 shrink-0 rounded-full bg-indigo-500 text-white flex items-center justify-center transition hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Send className="w-4 h-4" />
+      </button>
     </div>
   );
 }

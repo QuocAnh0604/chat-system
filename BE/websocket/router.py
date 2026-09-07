@@ -15,6 +15,8 @@ from BE.services.conversation_service import (
 )
 from BE.websocket.dependencies import authenticate_websocket
 from BE.websocket.manager import connection_manager
+from BE.config.redis import redis_client
+from BE.services.presence_service import PresenceService
 
 router = APIRouter(tags=["WebSocket"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -44,10 +46,12 @@ async def conversation_websocket(
         return
 
     await connection_manager.connect(conversation_id, websocket)
-    await websocket.send_json(
-        {"event": "connected", "conversation_id": str(conversation_id)}
-    )
+    presence_service = PresenceService(UserRepository(session), redis_client)
     try:
+        await presence_service.mark_online(current_user.id)
+        await websocket.send_json(
+            {"event": "connected", "conversation_id": str(conversation_id)}
+        )
         while True:
             try:
                 payload = json.loads(await websocket.receive_text())
@@ -57,7 +61,11 @@ async def conversation_websocket(
                 )
                 continue
 
-            if payload.get("event") == "ping":
+            if payload.get("type") == "ping" or payload.get("event") in {
+                "ping",
+                "heartbeat",
+            }:
+                await presence_service.refresh_presence(current_user.id)
                 await websocket.send_json({"event": "pong"})
                 continue
             await websocket.send_json(
@@ -70,3 +78,35 @@ async def conversation_websocket(
         pass
     finally:
         connection_manager.disconnect(conversation_id, websocket)
+        await presence_service.mark_offline(current_user.id)
+
+
+@router.websocket("/ws/presence")
+async def presence_websocket(
+    websocket: WebSocket,
+    session: DatabaseSession,
+) -> None:
+    """Keep the authenticated user's presence key alive with client heartbeats."""
+    current_user = await authenticate_websocket(websocket, session)
+    if current_user is None:
+        return
+
+    presence_service = PresenceService(UserRepository(session), redis_client)
+    await websocket.accept()
+    try:
+        await presence_service.mark_online(current_user.id)
+        while True:
+            try:
+                payload = json.loads(await websocket.receive_text())
+            except json.JSONDecodeError:
+                continue
+            if payload.get("type") == "ping" or payload.get("event") in {
+                "ping",
+                "heartbeat",
+            }:
+                await presence_service.refresh_presence(current_user.id)
+                await websocket.send_json({"event": "pong"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await presence_service.mark_offline(current_user.id)

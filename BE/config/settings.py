@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 DATABASE_URL: str | None = os.getenv("DATABASE_URL")
+REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 
 def _resolve_path(value: str) -> Path:

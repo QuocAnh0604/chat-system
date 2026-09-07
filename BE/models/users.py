@@ -29,3 +29,9 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

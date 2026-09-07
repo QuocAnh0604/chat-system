@@ -1,6 +1,8 @@
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from datetime import datetime
+
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +33,17 @@ class UserRepository:
     async def get_by_id(self, user_id: UUID) -> User | None:
         result = await self._session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
+
+    async def get_by_ids(self, user_ids: set[UUID]) -> list[User]:
+        if not user_ids:
+            return []
+        result = await self._session.execute(select(User).where(User.id.in_(user_ids)))
+        return list(result.scalars().all())
+
+    async def update_last_seen(self, user_id: UUID, value: datetime) -> None:
+        statement = update(User).where(User.id == user_id).values(last_seen=value)
+        await self._session.execute(statement)
+        await self._session.commit()
 
     async def search_by_display_name(
         self, query: str, limit: int

@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +9,15 @@ from BE.core.dependencies import get_current_user
 from BE.models.users import User
 from BE.repositories.refresh_token_repository import RefreshTokenRepository
 from BE.repositories.user_repository import UserRepository
-from BE.schemas.users import PasswordChange, UserProfile, UserResponse, UserUpdate
+from BE.schemas.users import (
+    PasswordChange,
+    PresenceStatus,
+    UserProfile,
+    UserResponse,
+    UserUpdate,
+)
+from BE.config.redis import redis_client
+from BE.services.presence_service import PresenceService
 from BE.services.user_service import (
     InvalidCurrentPasswordError,
     NoProfileChangesError,
@@ -32,6 +41,18 @@ async def search_users(
     del current_user
     users = await UserService(UserRepository(session)).search_users(q, limit)
     return [UserResponse.model_validate(user) for user in users]
+
+
+@router.get("/presence", response_model=list[PresenceStatus])
+async def get_presence(
+    user_ids: Annotated[list[UUID], Query(min_length=1, max_length=100)],
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> list[PresenceStatus]:
+    """Return online and last-seen status for a batch of users."""
+    del current_user
+    users = await UserRepository(session).get_by_ids(set(user_ids))
+    return await PresenceService(UserRepository(session), redis_client).get_statuses(users)
 
 
 @router.get("/me", response_model=UserProfile)

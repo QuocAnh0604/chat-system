@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import userAPI from "../API/userAPI";
+import userAPI, { type PresenceStatus } from "../API/userAPI";
 import authAPI from "../API/authAPI";
 import conservationAPI from "../API/conservationAPI";
 import messageAPI from "../API/messageAPI";
+import { WS_URL } from "../config";
 import type { Conversation, Message } from "../types/chat";
 import ChatSidebar from "../COMPONENTS/chat/ChatSidebar";
 import ChatWindow from "../COMPONENTS/chat/ChatWindow";
@@ -182,6 +183,26 @@ export default function ChatHomePage() {
     fetchCurrentUser();
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+
+    const socket = new WebSocket(
+      `${WS_URL}/ws/presence?token=${encodeURIComponent(token)}`
+    );
+    const heartbeat = window.setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 25_000);
+    socket.addEventListener("close", () => window.clearInterval(heartbeat));
+
+    return () => {
+      window.clearInterval(heartbeat);
+      socket.close();
+    };
+  }, []);
+
   const handleSearch = async (value: string) => {
     setQuery(value);
     const trimmedQuery = value.trim();
@@ -209,7 +230,28 @@ export default function ChatHomePage() {
         ),
       ];
 
-      setSearchResults(merged.slice(0, 20));
+      const userIds = merged
+        .filter((conversation) => conversation.targetUserId)
+        .map((conversation) => conversation.targetUserId as string);
+      const presence = userIds.length
+        ? await userAPI.getPresence(userIds).catch(() => [])
+        : [];
+      const presenceByUserId = new Map(
+        (Array.isArray(presence) ? presence : []).map((item: PresenceStatus) => [
+          item.user_id,
+          item,
+        ])
+      );
+      const conversationsWithPresence = merged.map((conversation) => {
+        const item = conversation.targetUserId
+          ? presenceByUserId.get(conversation.targetUserId)
+          : undefined;
+        return item
+          ? { ...conversation, online: item.is_online, lastSeenAt: item.last_seen_at }
+          : conversation;
+      });
+
+      setSearchResults(conversationsWithPresence.slice(0, 20));
     } catch (error) {
       console.error("Search failed:", error);
       if (requestId === searchRequestId.current) {

@@ -38,6 +38,12 @@ class UserUpdate(BaseModel):
     avatar_url: str | None = Field(default=None, max_length=500)
 
 
+class PresenceStatus(BaseModel):
+    user_id: UUID
+    is_online: bool
+    last_seen_at: datetime | None = None
+
+
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=8, max_length=72)
     new_password: str = Field(min_length=8, max_length=72)

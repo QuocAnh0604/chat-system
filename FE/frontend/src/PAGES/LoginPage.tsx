@@ -3,6 +3,7 @@ import type {FormEvent} from "react";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, MessageSquare } from "lucide-react";
 import authAPI from "../API/authAPI";
+import axios from "axios";
 
 interface LoginErrors {
   username?: string;
@@ -64,6 +65,10 @@ export default function LoginPage() {
       }
       
       setErrors({ server: serverError });
+      if (axios.isAxiosError(error)) {
+    console.log("Status:", error.response?.status);
+    console.log("Detail:", error.response?.data);   // <-- dòng quan trọng nhất
+  }
       console.error("Lỗi đăng nhập:", error);
     } finally {
       setLoading(false);

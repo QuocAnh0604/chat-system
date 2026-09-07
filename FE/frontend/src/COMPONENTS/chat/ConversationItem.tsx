@@ -6,6 +6,20 @@ interface ConversationItemProps {
   onClick: () => void;
 }
 
+const formatLastSeen = (value?: string | null): string => {
+  if (!value) return "Không hoạt động";
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 1000)
+  );
+  if (elapsedSeconds < 60) return "Hoạt động vừa xong";
+  const minutes = Math.floor(elapsedSeconds / 60);
+  if (minutes < 60) return `Hoạt động ${minutes} phút trước`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Hoạt động ${hours} giờ trước`;
+  return `Hoạt động ${Math.floor(hours / 24)} ngày trước`;
+};
+
 export default function ConversationItem({ conversation: c, isActive, onClick }: ConversationItemProps) {
   return (
     <button
@@ -33,7 +47,9 @@ export default function ConversationItem({ conversation: c, isActive, onClick }:
           <span className="text-[11px] text-gray-500 shrink-0">{c.time}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-gray-400 truncate">{c.lastMessage}</p>
+          <p className="text-xs text-gray-400 truncate">
+            {c.online ? "Đang hoạt động" : formatLastSeen(c.lastSeenAt)}
+          </p>
           {c.unread > 0 && (
             <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-500 text-[10px] font-bold leading-none flex items-center justify-center text-white">
               {c.unread}

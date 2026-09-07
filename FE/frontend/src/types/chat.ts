@@ -9,6 +9,7 @@ export interface Conversation {
   time: string;
   unread: number;
   online: boolean;
+  lastSeenAt?: string | null;
   status?: string;
 }
 
