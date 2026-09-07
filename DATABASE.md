@@ -32,6 +32,7 @@ Store user account information.
 | avatar_url | String(500) | Avatar image |
 | is_active | Boolean | Account status |
 | created_at | Timestamp | Account creation time |
+|last_Seen |  TimeStamp | Last time seen user Online |
 
 ---
 
