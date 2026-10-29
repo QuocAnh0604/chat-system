@@ -16,9 +16,8 @@ This project focuses on learning backend development through Layered Architectur
 - SQLAlchemy 2.0
 - JWT Authentication
 - Redis Cache
-### Future Versions
-
 - WebSocket
+### Future Versions
 - RabbitMQ
 - Docker
 - Kubernetes
