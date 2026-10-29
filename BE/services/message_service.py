@@ -16,11 +16,16 @@ from BE.schemas.messages import (
     MessageUpdate,
 )
 from BE.services.upload_service import UploadService
+from BE.services.message_cache import MessageCache
+from BE.config.settings import MESSAGE_CACHE_SIZE
 
 
 class MessageBroadcaster(Protocol):
     async def broadcast(
-        self, conversation_id: UUID, payload: dict[str, object]
+        self,
+        conversation_id: UUID,
+        payload: dict[str, object],
+        exclude_connection_id: str | None = None,
     ) -> None:
         """Broadcast an event to connected conversation members."""
 
@@ -71,16 +76,31 @@ class MessageService:
         broadcaster: MessageBroadcaster,
         upload_service: UploadService,
         user_repository: UserRepository,
+        message_cache: MessageCache,
     ) -> None:
         self._message_repository = message_repository
         self._conversation_repository = conversation_repository
         self._broadcaster = broadcaster
         self._upload_service = upload_service
         self._user_repository = user_repository
+        self._message_cache = message_cache
+
+    async def _cache_message(self, message: Message) -> None:
+        await self._message_cache.push_message(MessageResponse.model_validate(message))
 
     async def send_message_to_user(
-        self, sender_id: UUID, payload: MessageCreate, target_user_id: UUID
+        self,
+        sender_id: UUID,
+        payload: MessageCreate,
+        target_user_id: UUID,
+        exclude_connection_id: str | None = None,
     ) -> Message:
+        if payload.client_message_id is not None:
+            existing = await self._message_repository.get_by_sender_client_message_id(
+                sender_id, payload.client_message_id
+            )
+            if existing is not None:
+                return existing
         if sender_id == target_user_id:
             raise MessageTargetNotFoundError("A message target must be another user.")
         target = await self._user_repository.get_by_id(target_user_id)
@@ -96,22 +116,44 @@ class MessageService:
             )
 
         message = await self._message_repository.create(
-            conversation, sender_id, self._normalized_content(payload.content)
+            conversation,
+            sender_id,
+            self._normalized_content(payload.content),
+            client_message_id=payload.client_message_id,
         )
         await self._message_repository.commit()
-        await self._broadcast("message.created", message)
+        await self._cache_message(message)
+        await self._broadcast(
+            "message.created", message, exclude_connection_id
+        )
         return message
 
     async def send_message(
-        self, conversation_id: UUID, sender_id: UUID, payload: MessageCreate
+        self,
+        conversation_id: UUID,
+        sender_id: UUID,
+        payload: MessageCreate,
+        exclude_connection_id: str | None = None,
     ) -> Message:
         conversation = await self._require_membership(conversation_id, sender_id)
+        if payload.client_message_id is not None:
+            existing = await self._message_repository.get_by_sender_client_message_id(
+                sender_id, payload.client_message_id
+            )
+            if existing is not None:
+                return existing
         content = self._normalized_content(payload.content)
         message = await self._message_repository.create(
-            conversation, sender_id, content
+            conversation,
+            sender_id,
+            content,
+            client_message_id=payload.client_message_id,
         )
         await self._message_repository.commit()
-        await self._broadcast("message.created", message)
+        await self._cache_message(message)
+        await self._broadcast(
+            "message.created", message, exclude_connection_id
+        )
         return message
 
     async def reply_to_message(
@@ -130,6 +172,7 @@ class MessageService:
             reply_to_message_id,
         )
         await self._message_repository.commit()
+        await self._cache_message(message)
         await self._broadcast("message.created", message)
         return message
 
@@ -150,6 +193,7 @@ class MessageService:
                 message_type=message_type,
             )
             await self._message_repository.commit()
+            await self._cache_message(message)
         except Exception:
             await self._upload_service.delete_attachment(attachment.url)
             raise
@@ -173,6 +217,7 @@ class MessageService:
             datetime.now(timezone.utc),
         )
         await self._broadcast("message.updated", updated_message)
+        await self._message_cache.invalidate(conversation_id)
         return updated_message
 
     async def delete_message(
@@ -193,6 +238,7 @@ class MessageService:
                 "conversation_id": str(conversation_id),
             },
         )
+        await self._message_cache.invalidate(conversation_id)
 
     async def get_attachment(
         self, conversation_id: UUID, user_id: UUID, message_id: UUID
@@ -218,6 +264,18 @@ class MessageService:
         limit: int,
     ) -> MessagePageResponse:
         await self._require_membership(conversation_id, user_id)
+        can_use_cache = last_id is None and limit <= MESSAGE_CACHE_SIZE
+        if can_use_cache:
+            cached_messages = await self._message_cache.get_recent(conversation_id)
+            if cached_messages is not None:
+                return MessagePageResponse(
+                    messages=cached_messages[:limit],
+                    next_last_id=(
+                        cached_messages[limit - 1].id
+                        if len(cached_messages) >= limit and cached_messages
+                        else None
+                    ),
+                )
         last_message = None
         if last_id is not None:
             last_message = await self._message_repository.get_by_id(last_id)
@@ -229,11 +287,17 @@ class MessageService:
                     "Pagination cursor is not in this conversation."
                 )
 
+        db_limit = MESSAGE_CACHE_SIZE if can_use_cache else limit
         messages = await self._message_repository.list_for_conversation(
-            conversation_id, last_message, limit
+            conversation_id, last_message, db_limit
         )
-        has_next_page = len(messages) > limit
+        has_next_page = len(messages) > db_limit
         page_messages = messages[:limit]
+        if can_use_cache:
+            await self._message_cache.set_recent(
+                conversation_id,
+                [MessageResponse.model_validate(message) for message in messages[:MESSAGE_CACHE_SIZE]],
+            )
         next_last_id = page_messages[-1].id if has_next_page else None
         return MessagePageResponse(
             messages=[
@@ -270,9 +334,15 @@ class MessageService:
             raise InvalidMessageContentError("Message content cannot be blank.")
         return normalized_content
 
-    async def _broadcast(self, event: str, message: Message) -> None:
+    async def _broadcast(
+        self,
+        event: str,
+        message: Message,
+        exclude_connection_id: str | None = None,
+    ) -> None:
         response = MessageResponse.model_validate(message)
         await self._broadcaster.broadcast(
             message.conversation_id,
             {"event": event, "message": response.model_dump(mode="json")},
+            exclude_connection_id,
         )

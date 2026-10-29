@@ -51,16 +51,23 @@ export default function LoginPage() {
       
       // Chuyển hướng sang trang chat
       navigate("/chat");
-    } catch (error: any) {
+    } catch (error: unknown) {
       let serverError = "Đăng nhập thất bại, vui lòng thử lại";
       
-      const detail = error.response?.data?.detail;
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined;
       if (detail) {
         if (typeof detail === "string") {
           serverError = detail;
         } else if (Array.isArray(detail)) {
           // Xử lý lỗi validation từ Pydantic
-          serverError = detail.map((err: any) => err.msg || err).join(", ");
+          serverError = detail
+            .map((err: unknown) => {
+              if (typeof err === "object" && err !== null && "msg" in err) {
+                return String((err as { msg: unknown }).msg);
+              }
+              return String(err);
+            })
+            .join(", ");
         }
       }
       

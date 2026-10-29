@@ -3,6 +3,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from BE.schemas.messages import MessageResponse
+from BE.schemas.users import PresenceStatus, UserResponse
+
 
 class PrivateConversationCreate(BaseModel):
     user_id: UUID
@@ -35,3 +38,7 @@ class ConversationResponse(BaseModel):
 
 class ConversationListResponse(ConversationResponse):
     role: str
+    last_message: MessageResponse | None = None
+    unread_count: int = 0
+    members: list[UserResponse] = Field(default_factory=list)
+    presence: list[PresenceStatus] = Field(default_factory=list)

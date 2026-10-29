@@ -8,6 +8,7 @@ from BE.config.database import get_db
 from BE.core.dependencies import get_current_user
 from BE.models.users import User
 from BE.repositories.conversation_repository import ConversationRepository
+from BE.repositories.message_repository import MessageRepository
 from BE.repositories.user_repository import UserRepository
 from BE.schemas.conservations import (
     ConversationListResponse,
@@ -16,6 +17,8 @@ from BE.schemas.conservations import (
     GroupMemberAdd,
     GroupRename,
 )
+from BE.schemas.messages import MessageResponse
+from BE.schemas.users import UserResponse
 from BE.services.conversation_service import (
     ConversationService,
     ConversationUserNotFoundError,
@@ -27,6 +30,8 @@ from BE.services.conversation_service import (
     InvalidGroupMembersError,
 )
 from BE.services.upload_service import UploadService
+from BE.config.redis import redis_client
+from BE.services.presence_service import PresenceService
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -179,13 +184,52 @@ async def create_group(
 
 @router.get("", response_model=list[ConversationListResponse])
 async def list_conversations(
-    current_user: CurrentUser, session: DatabaseSession
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[ConversationListResponse]:
     """List conversations in which the authenticated user is a member."""
-    records = await _service(session).list_for_user(current_user.id)
-    return [
-        ConversationListResponse(
-            **ConversationResponse.model_validate(conversation).model_dump(), role=role.value
+    conversation_repository = ConversationRepository(session)
+    user_repository = UserRepository(session)
+    message_repository = MessageRepository(session)
+    presence_service = PresenceService(user_repository, redis_client)
+    records = await _service(session).list_for_user(
+        current_user.id, offset=offset, limit=limit
+    )
+    summaries: list[ConversationListResponse] = []
+    for conversation, role in records:
+        member_ids = await conversation_repository.get_member_ids(conversation.id)
+        members = await user_repository.get_by_ids(member_ids)
+        membership = await conversation_repository.get_member(
+            conversation.id, current_user.id
         )
-        for conversation, role in records
-    ]
+        last_message = (
+            await message_repository.get_by_id(conversation.last_message_id)
+            if conversation.last_message_id is not None
+            else None
+        )
+        last_read_message = (
+            await message_repository.get_by_id(membership.last_read_message_id)
+            if membership is not None and membership.last_read_message_id is not None
+            else None
+        )
+        unread_count = await message_repository.count_unread(
+            conversation.id, current_user.id, last_read_message
+        )
+        presence = await presence_service.get_statuses(members)
+        summaries.append(
+            ConversationListResponse(
+                **ConversationResponse.model_validate(conversation).model_dump(),
+                role=role.value,
+                last_message=(
+                    MessageResponse.model_validate(last_message)
+                    if last_message is not None
+                    else None
+                ),
+                unread_count=unread_count,
+                members=[UserResponse.model_validate(member) for member in members],
+                presence=presence,
+            )
+        )
+    return summaries

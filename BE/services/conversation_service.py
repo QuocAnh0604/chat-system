@@ -60,9 +60,9 @@ class ConversationService:
         self._user_repository = user_repository
 
     async def list_for_user(
-        self, user_id: UUID
+        self, user_id: UUID, offset: int = 0, limit: int = 50
     ) -> list[tuple[Conversation, MemberRole]]:
-        return await self._conversation_repository.list_for_user(user_id)
+        return await self._conversation_repository.list_for_user(user_id, offset, limit)
 
     async def search_for_user(
         self, user_id: UUID, query: str, limit: int

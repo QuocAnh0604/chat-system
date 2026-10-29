@@ -8,6 +8,7 @@ from BE.models.messages import MessageStatus, MessageType
 
 class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=10_000)
+    client_message_id: str | None = Field(default=None, max_length=100)
 
 
 class LazyMessageCreate(MessageCreate):
@@ -46,6 +47,7 @@ class MessageResponse(BaseModel):
     status: MessageStatus
     created_at: datetime
     edited_at: datetime | None
+    client_message_id: str | None
 
 
 class MessagePageResponse(BaseModel):

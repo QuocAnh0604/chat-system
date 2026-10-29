@@ -24,10 +24,12 @@ class MessageRepository:
         content: str,
         reply_to_message_id: UUID | None = None,
         message_type: MessageType = MessageType.text,
+        client_message_id: str | None = None,
     ) -> Message:
         message = Message(
             conversation_id=conversation.id,
             sender_id=sender_id,
+            client_message_id=client_message_id,
             reply_to_message_id=reply_to_message_id,
             content=content,
             type=message_type,
@@ -37,6 +39,17 @@ class MessageRepository:
         await self._session.flush()
         conversation.last_message_id = message.id
         return message
+
+    async def get_by_sender_client_message_id(
+        self, sender_id: UUID, client_message_id: str
+    ) -> Message | None:
+        result = await self._session.execute(
+            select(Message).where(
+                Message.sender_id == sender_id,
+                Message.client_message_id == client_message_id,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_by_id(self, message_id: UUID) -> Message | None:
         result = await self._session.execute(

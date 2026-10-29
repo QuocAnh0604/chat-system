@@ -5,9 +5,10 @@ interface MessageBubbleProps {
   message: Message;
   senderColor: string;
   senderInitials: string;
+  onRetry?: () => void;
 }
 
-export default function MessageBubble({ message: m, senderColor, senderInitials }: MessageBubbleProps) {
+export default function MessageBubble({ message: m, senderColor, senderInitials, onRetry }: MessageBubbleProps) {
   return (
     <div className={`flex ${m.from === "me" ? "justify-end" : "items-end gap-2"}`}>
       {m.from === "them" && (
@@ -30,7 +31,11 @@ export default function MessageBubble({ message: m, senderColor, senderInitials 
         <div className="flex items-center gap-1 mt-1 px-1">
           <span className="text-[11px] text-gray-400">{m.time}</span>
           {m.from === "me" &&
-            (m.seen ? (
+            (m.status === "failed" ? (
+              <button type="button" onClick={onRetry} className="text-red-500 underline">Gửi lại</button>
+            ) : m.status === "sending" ? (
+              <span className="text-gray-400">Đang gửi</span>
+            ) : m.seen ? (
               <CheckCheck className="w-3.5 h-3.5 text-indigo-400" />
             ) : (
               <Check className="w-3.5 h-3.5 text-gray-400" />

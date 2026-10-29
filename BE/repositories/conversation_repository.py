@@ -89,7 +89,7 @@ class ConversationRepository:
         return conversation
 
     async def list_for_user(
-        self, user_id: UUID
+        self, user_id: UUID, offset: int = 0, limit: int = 50
     ) -> list[tuple[Conversation, MemberRole]]:
         statement = (
             select(Conversation, ConversationMember.role)
@@ -104,6 +104,8 @@ class ConversationRepository:
                 )
             )
             .order_by(Conversation.updated_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
         result = await self._session.execute(statement)
         return list(result.all())
@@ -181,6 +183,26 @@ class ConversationRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_member_ids(self, conversation_id: UUID) -> set[UUID]:
+        result = await self._session.execute(
+            select(ConversationMember.user_id).where(
+                ConversationMember.conversation_id == conversation_id
+            )
+        )
+        return set(result.scalars().all())
+
+    async def get_user_ids_in_shared_conversations(self, user_id: UUID) -> set[UUID]:
+        shared_conversations = select(ConversationMember.conversation_id).where(
+            ConversationMember.user_id == user_id
+        )
+        result = await self._session.execute(
+            select(ConversationMember.user_id)
+            .where(ConversationMember.conversation_id.in_(shared_conversations))
+            .where(ConversationMember.user_id != user_id)
+            .distinct()
+        )
+        return set(result.scalars().all())
 
     async def update_last_read(
         self,

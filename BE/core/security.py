@@ -1,9 +1,15 @@
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from jose import JWTError, jwt
+from jose.exceptions import ExpiredSignatureError
+
+from BE.config.settings import JWT_SECRET_KEY
+
+
+class ExpiredTokenError(ValueError):
+    """Raised when a JWT has expired."""
 
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -46,6 +52,8 @@ def decode_token(token: str, expected_type: str) -> dict[str, str]:
     """Decode a JWT and ensure that it is being used for its intended purpose."""
     try:
         payload = jwt.decode(token, _get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+    except ExpiredSignatureError as exc:
+        raise ExpiredTokenError("Token has expired.") from exc
     except JWTError as exc:
         raise ValueError("Invalid or expired token.") from exc
 
@@ -59,7 +67,4 @@ def _encode_token(payload: dict[str, object]) -> str:
 
 
 def _get_jwt_secret() -> str:
-    secret = os.getenv("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY must be configured in the environment.")
-    return secret
+    return JWT_SECRET_KEY

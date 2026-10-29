@@ -1,24 +1,11 @@
 import axiosClient from "./axiosClient";
+import type { PresenceStatus, User } from "../types/chat";
 
-export interface UserProfile {
-  id: string;
-  username: string;
-  email: string;
-  display_name: string;
-  avatar_url: string | null;
-  is_active: boolean;
-  created_at: string;
-}
-
-export interface PresenceStatus {
-  user_id: string;
-  is_online: boolean;
-  last_seen_at: string | null;
-}
+export type UserProfile = User;
 
 const userAPI = {
   searchUsers: (q: string, limit = 20) =>
-    axiosClient.get("/users/search", {
+    axiosClient.get<User[]>("/users/search", {
       params: {
         q,
         limit,

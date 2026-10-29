@@ -32,6 +32,8 @@ from BE.services.message_service import (
     MessageService,
 )
 from BE.websocket.manager import connection_manager
+from BE.config.redis import redis_client
+from BE.services.message_cache import MessageCache
 from BE.services.upload_service import UploadService
 
 router = APIRouter(
@@ -49,6 +51,7 @@ def _service(session: AsyncSession) -> MessageService:
         connection_manager,
         UploadService(),
         UserRepository(session),
+        MessageCache(redis_client),
     )
 
 
@@ -61,7 +64,12 @@ async def send_message_to_user(
     """Create a private conversation only when its first message is sent."""
     try:
         message = await _service(session).send_message_to_user(
-            current_user.id, MessageCreate(content=payload.content), payload.target_user_id
+            current_user.id,
+            MessageCreate(
+                content=payload.content,
+                client_message_id=payload.client_message_id,
+            ),
+            payload.target_user_id,
         )
     except MessageTargetNotFoundError as exc:
         raise HTTPException(

@@ -3,6 +3,7 @@ import type { FormEvent } from "react"
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock, User, AtSign, Eye, EyeOff, MessageSquare } from "lucide-react";
 import authAPI from "../API/authAPI";
+import axios from "axios";
 
 interface RegisterForm {
   displayName: string;
@@ -87,8 +88,9 @@ export default function RegisterPage() {
       // Đăng ký thành công, chuyển sang trang login
       alert("Đăng ký thành công! Vui lòng đăng nhập.");
       navigate("/login");
-    } catch (error: any) {
-      const serverError = error.response?.data?.detail || "Đăng ký thất bại, vui lòng thử lại";
+    } catch (error: unknown) {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined;
+      const serverError = typeof detail === "string" ? detail : "Đăng ký thất bại, vui lòng thử lại";
       setErrors({ server: serverError });
       console.error("Lỗi đăng ký:", error);
     } finally {

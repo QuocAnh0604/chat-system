@@ -41,7 +41,7 @@ class UserRepository:
         return list(result.scalars().all())
 
     async def update_last_seen(self, user_id: UUID, value: datetime) -> None:
-        statement = update(User).where(User.id == user_id).values(last_seen=value)
+        statement = update(User).where(User.id == user_id).values(last_seen_at=value)
         await self._session.execute(statement)
         await self._session.commit()
 

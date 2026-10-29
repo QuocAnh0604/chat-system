@@ -1,23 +1,26 @@
 import axiosClient from "./axiosClient";
+import type { ApiMessage, MessagePage } from "../types/chat";
 
 const messageAPI = {
   getMessages: (conversationId: string, lastId?: string, limit = 50) =>
-    axiosClient.get(`/conversations/${conversationId}/messages`, {
+    axiosClient.get<MessagePage>(`/conversations/${conversationId}/messages`, {
       params: {
         last_id: lastId,
         limit,
       },
     }),
 
-  sendMessageToUser: (targetUserId: string, content: string) =>
-    axiosClient.post("/messages", {
+  sendMessageToUser: (targetUserId: string, content: string, clientMessageId?: string) =>
+    axiosClient.post<ApiMessage>("/messages", {
       target_user_id: targetUserId,
       content,
+      client_message_id: clientMessageId,
     }),
 
-  sendMessage: (conversationId: string, content: string) =>
-    axiosClient.post(`/conversations/${conversationId}/messages`, {
+  sendMessage: (conversationId: string, content: string, clientMessageId?: string) =>
+    axiosClient.post<ApiMessage>(`/conversations/${conversationId}/messages`, {
       content,
+      client_message_id: clientMessageId,
     }),
 
   uploadImage: (conversationId: string, file: File) => {
